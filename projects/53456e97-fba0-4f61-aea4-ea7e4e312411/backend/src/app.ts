@@ -1,0 +1,24 @@
+// Express app setup
+import express from 'express';
+import fileIntakeRoutes from './file-intake/routes/fileIntake';
+import x12ParserRoutes from './x12-parser/routes/x12Parser';
+import claimParsingRoutes from './claim-parsing/routes/claimParsing';
+import businessValidationRoutes from './business-validation/routes/businessValidation';
+import masterDataRoutes from './master-data/routes/masterData';
+import workflowRoutes from './workflow/routes/workflow';
+import submissionRoutes from './submission/routes/submission';
+import reportingRoutes from './reporting/routes/reporting';
+import denialsMLRoutes from './denials-ml/routes/denialsML';
+
+const app = express();
+app.use(express.json());
+app.use('/file-intake', fileIntakeRoutes);
+app.use('/x12-parser', x12ParserRoutes);
+app.use('/claim-parsing', claimParsingRoutes);
+app.use('/business-validation', businessValidationRoutes);
+app.use('/master-data', masterDataRoutes);
+app.use('/workflow', workflowRoutes);
+app.use('/submission', submissionRoutes);
+app.use('/reporting', reportingRoutes);
+app.use('/denials-ml', denialsMLRoutes);
+export default app;

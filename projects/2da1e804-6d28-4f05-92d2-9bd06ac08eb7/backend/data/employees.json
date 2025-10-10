@@ -1,0 +1,24 @@
+[
+  {
+    "employeeId": "EMP0001",
+    "fullName": "Alice Johnson",
+    "email": "alice.johnson@example.com",
+    "phone": "555-1234",
+    "address": "123 Main St",
+    "department": "HR",
+    "position": "HR Manager",
+    "salary": 70000,
+    "startDate": "2022-01-15"
+  },
+  {
+    "employeeId": "EMP0002",
+    "fullName": "Bob Smith",
+    "email": "bob.smith@example.com",
+    "phone": "555-5678",
+    "address": "456 Elm St",
+    "department": "Engineering",
+    "position": "Software Engineer",
+    "salary": 90000,
+    "startDate": "2023-03-01"
+  }
+]
