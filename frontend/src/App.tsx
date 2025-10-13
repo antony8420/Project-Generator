@@ -36,15 +36,20 @@ function App() {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [selectedProject, setSelectedProject] = useState('');
   const [selectedFeature, setSelectedFeature] = useState('');
-  const [selectionMode, setSelectionMode] = useState<'feature' | 'custom'>('feature');
-  const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
   const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
-  const [viewingFiles, setViewingFiles] = useState<{projectId: string, files: ProjectFile[], projectName: string} | null>(null);
+  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
+  const [expandedProjectFiles, setExpandedProjectFiles] = useState<ProjectFile[]>([]);
+  const [expandedProjectName, setExpandedProjectName] = useState<string>('');
+
   const [viewingFileContent, setViewingFileContent] = useState<{filename: string, content: string} | null>(null);
 
+  // Custom selection states
+  const [selectionMode, setSelectionMode] = useState<'feature' | 'custom'>('feature');
+  const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
+
   // Current view state
-  const [currentView, setCurrentView] = useState<'projects' | 'file-tracking'>('projects');
+  const [currentView, setCurrentView] = useState<'project-management' | 'projects-list' | 'file-tracking'>('project-management');
 
   // File Tracking State (moved to main component level to avoid hooks in conditional rendering)
   const [fileTrackingData, setFileTrackingData] = useState<{
@@ -215,12 +220,24 @@ function App() {
         });
       } else {
         // Use text-based endpoint (legacy)
-        let requestBody: any = { brd };
+        let requestBody: any = {
+          brd,
+          selectionMode
+        };
 
-        if (selectionMode === 'feature' && selectedFeature) {
-          requestBody.feature = selectedFeature;
-        } else if (selectionMode === 'custom' && selectedPaths.length > 0) {
-          requestBody.selectedPaths = selectedPaths;
+        // Add parameters based on selection mode
+        if (selectionMode === 'feature') {
+          // Keep existing behavior if feature mode
+          if (selectedFeature) {
+            requestBody.feature = selectedFeature;
+          }
+        } else if (selectionMode === 'custom') {
+          if (selectedPaths.length > 0) {
+            requestBody.selectedPaths = selectedPaths;
+          } else {
+            alert('Please select at least one folder for custom selection mode.');
+            return;
+          }
         }
 
         response = await axios.post(`http://localhost:3000/api/projects/${selectedProject}/update`, requestBody);
@@ -275,6 +292,7 @@ function App() {
   };
 
   const showDeleteConfirmation = (projectId: string, projectName: string) => {
+    console.log('🔄 showDeleteConfirmation called with:', { projectId, projectName });
     setDeleteConfirmation({
       show: true,
       projectId,
@@ -305,15 +323,65 @@ function App() {
     }
   };
 
-  const viewFiles = async (projectId: string) => {
+  const toggleFiles = async (projectId: string, projectName: string) => {
+    // If clicking on an already expanded project, collapse it
+    if (expandedProjectId === projectId) {
+      setExpandedProjectId(null);
+      setExpandedProjectFiles([]);
+      setExpandedProjectName('');
+      return;
+    }
+
+    // If clicking on a different project, load its files
     setLoadingFilesProjectId(projectId);
+    console.log('📂 toggleFiles called with projectId:', projectId, 'projectName:', projectName);
+
     try {
-      const res = await axios.get(`http://localhost:3000/api/projects/${projectId}/files`);
-      setViewingFiles({ projectId, files: res.data.files, projectName: res.data.project });
-      setViewingFileContent(null); // Reset file content
-    } catch (error) {
-      console.error('Failed to fetch files:', error);
-      alert('Failed to load files');
+      console.log('🔄 Making API call to:', `http://localhost:3000/api/projects/${projectId}/files`);
+      const response = await axios.get(`http://localhost:3000/api/projects/${projectId}/files`);
+      console.log('✅ API call successful, response status:', response.status);
+
+      if (!response.data) {
+        console.error('❌ No response data received');
+        alert('Invalid response from server');
+        return;
+      }
+
+      console.log('📊 Raw response data:', response.data);
+      console.log('📁 Files count in response:', response.data.files?.length || 'No files array');
+
+      if (!response.data.files || !Array.isArray(response.data.files)) {
+        console.error('❌ Invalid files array in response:', response.data.files);
+        alert('Server returned invalid file data');
+        return;
+      }
+
+      // Normalize all file paths to use forward slashes (Windows compatibility)
+      const normalizedFiles = response.data.files.map((file: ProjectFile) => ({
+        ...file,
+        path: file.path.replace(/\\/g, '/') // Convert backslashes to forward slashes
+      }));
+
+      console.log('🔄 Normalized files count:', normalizedFiles.length);
+      console.log('🎯 Setting state for project:', response.data.project);
+
+      // Use single atomic state updates to ensure they happen together
+      setExpandedProjectId(projectId);
+      setExpandedProjectFiles(normalizedFiles);
+      setExpandedProjectName(response.data.project);
+
+      console.log('✅ State updated successfully - file tree should now be visible');
+
+    } catch (error: any) {
+      console.error('❌ Failed to fetch files:', error);
+      console.error('Error object:', error);
+      console.error('Error response:', error.response);
+      console.error('Error message:', error.message);
+
+      const errorMessage = error.response?.data?.error ||
+                          error.message ||
+                          'Failed to load files. Please check if the backend server is running.';
+      alert(errorMessage);
     } finally {
       setLoadingFilesProjectId(null);
     }
@@ -460,6 +528,291 @@ function App() {
     return buildTree();
   };
 
+  // Project Management: Folder Selection with Checkboxes (for AI analysis targeting)
+  const renderFolderSelectionView = () => {
+    if (expandedProjectFiles.length === 0) {
+      return (
+        <div style={{
+          textAlign: 'center',
+          padding: '40px',
+          color: '#666',
+          fontStyle: 'italic'
+        }}>
+          📁 No folders found in this project
+        </div>
+      );
+    }
+
+    // Filter to show only directories
+    const directories = expandedProjectFiles.filter(file => file.type === 'directory');
+
+    if (directories.length === 0) {
+      return (
+        <div style={{
+          textAlign: 'center',
+          padding: '40px',
+          color: '#666',
+          fontStyle: 'italic'
+        }}>
+          📁 No folders found in this project
+        </div>
+      );
+    }
+
+    return (
+      <div style={{ maxHeight: '400px', overflow: 'auto' }}>
+        <div style={{
+          marginBottom: '15px',
+          textAlign: 'center',
+          color: '#666',
+          fontStyle: 'italic'
+        }}>
+          📂 Select folders to include in AI analysis ({directories.length} folders available)
+        </div>
+        <div style={{ display: 'grid', gap: '4px' }}>
+          {directories.map((dir, index) => (
+            <div
+              key={`folder-${dir.path}-${index}`}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                padding: '8px 12px',
+                borderRadius: '6px',
+                backgroundColor: '#f8f9fa',
+                border: '1px solid #e9ecef',
+                transition: 'background-color 0.2s'
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={selectedPaths.includes(dir.path)}
+                onChange={() => toggleSelection(dir.path, 'directory')}
+                style={{ marginRight: '10px' }}
+              />
+              <span style={{
+                marginRight: '10px',
+                fontSize: '1.1em',
+                color: '#ff9800'
+              }}>
+                📁
+              </span>
+              <span style={{
+                fontFamily: 'monospace',
+                fontSize: '0.9em',
+                flex: 1,
+                fontWeight: 'bold',
+                color: '#1976d2'
+              }}>
+                {dir.path}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  // Projects List: Simple File Viewer (no checkboxes)
+  const renderSimpleFileView = () => {
+    if (expandedProjectFiles.length === 0) {
+      return (
+        <div style={{
+          textAlign: 'center',
+          padding: '40px',
+          color: '#666',
+          fontStyle: 'italic'
+        }}>
+          📁 No files found in this project
+        </div>
+      );
+    }
+
+    // Simple flat list display for files (no selection checkboxes)
+    const files = expandedProjectFiles;
+    return (
+      <div style={{ maxHeight: '400px', overflow: 'auto' }}>
+        <div style={{
+          marginBottom: '15px',
+          textAlign: 'center',
+          color: '#666',
+          fontStyle: 'italic'
+        }}>
+          📂 Showing {files.length} files in project
+        </div>
+        <div style={{ display: 'grid', gap: '4px' }}>
+          {files.map((file, index) => (
+            <div
+              key={`${file.path}-${index}`}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                padding: '6px 12px',
+                borderRadius: '6px',
+                backgroundColor: '#f8f9fa',
+                border: '1px solid #e9ecef',
+                cursor: file.type === 'file' ? 'pointer' : 'default',
+                transition: 'background-color 0.2s'
+              }}
+              onClick={
+                file.type === 'file'
+                  ? () => viewFileContent(expandedProjectId!, file.path)
+                  : undefined
+              }
+              onMouseEnter={
+                file.type === 'file'
+                  ? (e) => {
+                      e.currentTarget.style.backgroundColor = '#e9ecef';
+                      e.currentTarget.style.transform = 'scale(1.01)';
+                    }
+                  : undefined
+              }
+              onMouseLeave={
+                file.type === 'file'
+                  ? (e) => {
+                      e.currentTarget.style.backgroundColor = '#f8f9fa';
+                      e.currentTarget.style.transform = 'scale(1)';
+                    }
+                  : undefined
+              }
+            >
+              <span style={{
+                marginRight: '10px',
+                fontSize: '1.1em',
+                color: file.type === 'directory' ? '#ff9800' : (
+                  file.path.includes('.js') || file.path.includes('.ts') ? '#f39c12' :
+                  file.path.includes('.json') ? '#27ae60' :
+                  file.path.includes('.md') ? '#3498db' :
+                  file.path.includes('.css') || file.path.includes('.scss') ? '#9b59b6' :
+                  file.path.includes('.html') ? '#e74c3c' :
+                  '#95a5a6'
+                )
+              }}>
+                {file.type === 'directory' ? '📁' : '📄'}
+              </span>
+              <span style={{
+                fontFamily: 'monospace',
+                fontSize: '0.9em',
+                flex: 1,
+                fontWeight: file.type === 'directory' ? 'bold' : 'normal',
+                color: file.type === 'directory' ? '#1976d2' : '#333'
+              }}>
+                {file.path}
+              </span>
+                  {file.size && file.size < 1024 * 1024 && (
+                <span style={{
+                  fontSize: '0.8em',
+                  color: '#666',
+                  backgroundColor: '#e9ecef',
+                  padding: '2px 6px',
+                  borderRadius: '3px',
+                  marginLeft: '8px'
+                }}>
+                  {file.size < 1024 ? `${file.size} B` :
+                   file.size < 1024 * 1024 ? `${Math.round(file.size / 1024)} KB` :
+                   `${Math.round(file.size / (1024 * 1024))} MB`}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderInlineFileTree = () => {
+    if (expandedProjectFiles.length === 0) {
+      return (
+        <div style={{
+          textAlign: 'center',
+          padding: '40px',
+          color: '#666',
+          fontStyle: 'italic'
+        }}>
+          📁 No files found in this project
+        </div>
+      );
+    }
+
+    // Simple flat list display for files (when not in folder selection mode)
+    const files = expandedProjectFiles;
+    return (
+      <div style={{ maxHeight: '400px', overflow: 'auto' }}>
+        <div style={{
+          marginBottom: '15px',
+          textAlign: 'center',
+          color: '#666',
+          fontStyle: 'italic'
+        }}>
+          📂 Showing {files.length} files in simple list view
+        </div>
+        <div style={{ display: 'grid', gap: '4px' }}>
+          {files.map((file, index) => (
+            <div
+              key={`${file.path}-${index}`}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                padding: '6px 12px',
+                borderRadius: '6px',
+                backgroundColor: '#f8f9fa',
+                border: '1px solid #e9ecef',
+                cursor: file.type === 'file' ? 'pointer' : 'default',
+                transition: 'background-color 0.2s'
+              }}
+              onClick={file.type === 'file' ? () => viewFileContent(expandedProjectId!, file.path) : undefined}
+              onMouseEnter={file.type === 'file' ? (e) => {
+                e.currentTarget.style.backgroundColor = '#e9ecef';
+                e.currentTarget.style.transform = 'scale(1.01)';
+              } : undefined}
+              onMouseLeave={file.type === 'file' ? (e) => {
+                e.currentTarget.style.backgroundColor = '#f8f9fa';
+                e.currentTarget.style.transform = 'scale(1)';
+              } : undefined}
+            >
+              <span style={{
+                marginRight: '10px',
+                fontSize: '1.1em',
+                color: file.type === 'directory' ? '#ff9800' : (
+                  file.path.includes('.js') || file.path.includes('.ts') ? '#f39c12' :
+                  file.path.includes('.json') ? '#27ae60' :
+                  file.path.includes('.md') ? '#3498db' :
+                  file.path.includes('.css') || file.path.includes('.scss') ? '#9b59b6' :
+                  file.path.includes('.html') ? '#e74c3c' :
+                  '#95a5a6'
+                )
+              }}>
+                {file.type === 'directory' ? '📁' : '📄'}
+              </span>
+              <span style={{
+                fontFamily: 'monospace',
+                fontSize: '0.9em',
+                flex: 1,
+                fontWeight: file.type === 'directory' ? 'bold' : 'normal',
+                color: file.type === 'directory' ? '#1976d2' : '#333'
+              }}>
+                {file.path}
+              </span>
+              {file.size && file.size < 1024 * 1024 && (
+                <span style={{
+                  fontSize: '0.8em',
+                  color: '#666',
+                  backgroundColor: '#e9ecef',
+                  padding: '2px 6px',
+                  borderRadius: '3px',
+                  marginLeft: '8px'
+                }}>
+                  {file.size < 1024 ? `${file.size} B` :
+                   file.size < 1024 * 1024 ? `${Math.round(file.size / 1024)} KB` :
+                   `${Math.round(file.size / (1024 * 1024))} MB`}`
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString();
   };
@@ -492,42 +845,62 @@ function App() {
       borderBottom: '1px solid #dee2e6',
       marginBottom: '20px'
     }}>
-      <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
         <button
-          onClick={() => setCurrentView('projects')}
+          onClick={() => setCurrentView('project-management')}
           style={{
             padding: '8px 16px',
-            background: currentView === 'projects' ? '#007bff' : '#6c757d',
+            background: currentView === 'project-management' ? '#007bff' : '#6c757d',
             color: 'white',
             border: 'none',
             borderRadius: '4px',
             cursor: 'pointer',
-            fontWeight: currentView === 'projects' ? 'bold' : 'normal'
+            fontWeight: currentView === 'project-management' ? 'bold' : 'normal',
+            fontSize: '0.9em'
           }}
+          title="Create and update projects from BRD requirements"
         >
-          📂 Project Management
+          🆕 Project Management
+        </button>
+        <button
+          onClick={() => setCurrentView('projects-list')}
+          style={{
+            padding: '8px 16px',
+            background: currentView === 'projects-list' ? '#28a745' : '#6c757d',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: currentView === 'projects-list' ? 'bold' : 'normal',
+            fontSize: '0.9em'
+          }}
+          title="View and manage all existing projects"
+        >
+          📋 Projects List
         </button>
         <button
           onClick={() => setCurrentView('file-tracking')}
           style={{
             padding: '8px 16px',
-            background: currentView === 'file-tracking' ? '#28a745' : '#6c757d',
+            background: currentView === 'file-tracking' ? '#dc3545' : '#6c757d',
             color: 'white',
             border: 'none',
             borderRadius: '4px',
             cursor: 'pointer',
-            fontWeight: currentView === 'file-tracking' ? 'bold' : 'normal'
+            fontWeight: currentView === 'file-tracking' ? 'bold' : 'normal',
+            fontSize: '0.9em'
           }}
+          title="Monitor AI file processing analytics"
         >
-          📊 File Tracking Dashboard
+          📊 File Tracking
         </button>
       </div>
     </nav>
   );
 
-  const renderProjectsView = () => (
+  const renderProjectManagementView = () => (
     <>
-      <h1>Project Generator Dashboard</h1>
+      <h1>🆕 Project Management</h1>
 
       {/* Project Creation Section */}
       <div style={{ marginBottom: '30px', border: '1px solid #ccc', padding: '15px', borderRadius: '5px' }}>
@@ -545,24 +918,160 @@ function App() {
         </div>
         {selectedProject && (
           <div style={{ marginBottom: '10px' }}>
-            <div style={{
-              padding: '12px',
-              backgroundColor: '#e8f4fd',
-              border: '1px solid #2196f3',
-              borderRadius: '6px',
-              marginBottom: '10px'
-            }}>
-              <h4 style={{ margin: '0 0 8px 0', color: '#1976d2' }}>🤖 AI-Powered Update</h4>
-              <p style={{ margin: 0, fontSize: '0.9em', color: '#666' }}>
-                Simply provide your BRD text below. AI will:
-              </p>
-              <ul style={{ margin: '5px 0 0 20px', fontSize: '0.9em', color: '#666' }}>
-                <li>Analyze your requirements automatically</li>
-                <li>Determine which features are affected</li>
-                <li>Update only the relevant files</li>
-                <li>No manual file/folder selection needed!</li>
-              </ul>
+            <h3 style={{ marginBottom: '15px', color: '#333' }}>📁 Selection Mode</h3>
+
+            {/* Selection Mode Radio Buttons */}
+            <div style={{ marginBottom: '15px', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
+              <div style={{ display: 'flex', gap: '20px', marginBottom: '10px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="selectionMode"
+                    value="feature"
+                    checked={selectionMode === 'feature'}
+                    onChange={(e) => setSelectionMode(e.target.value as 'feature' | 'custom')}
+                    style={{ marginRight: '8px' }}
+                  />
+                  <div>
+                    <strong>🤖 AI Feature Detection</strong>
+                    <div style={{ fontSize: '0.85em', color: '#666', marginTop: '2px' }}>
+                      Let AI analyze your BRD and determine affected features automatically
+                    </div>
+                  </div>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="selectionMode"
+                    value="custom"
+                    checked={selectionMode === 'custom'}
+                    onChange={(e) => setSelectionMode(e.target.value as 'feature' | 'custom')}
+                    style={{ marginRight: '8px' }}
+                  />
+                  <div>
+                    <strong>🎯 Custom Folder Selection</strong>
+                    <div style={{ fontSize: '0.85em', color: '#666', marginTop: '2px' }}>
+                      Manually select folders to include in the AI snapshot
+                    </div>
+                  </div>
+                </label>
+              </div>
+
+              {/* Info Box */}
+              <div style={{
+                padding: '10px',
+                backgroundColor: selectionMode === 'feature' ? '#e8f4fd' : '#f0f8ff',
+                border: selectionMode === 'feature' ? '1px solid #2196f3' : '1px solid #0066cc',
+                borderRadius: '4px'
+              }}>
+                <h4 style={{
+                  margin: '0 0 6px 0',
+                  color: selectionMode === 'feature' ? '#1976d2' : '#0066cc',
+                  fontSize: '0.95em'
+                }}>
+                  {selectionMode === 'feature' ? '🤖 AI-Powered Update' : '🎯 Custom Selection Mode'}
+                </h4>
+                <p style={{ margin: 0, fontSize: '0.85em', color: '#666' }}>
+                  {selectionMode === 'feature'
+                    ? 'AI will analyze your BRD requirements and identify which features are affected. Only relevant files will be processed for optimal performance.'
+                    : 'Select specific folders from the project. Only files within the selected folders will be included in the AI analysis snapshot.'
+                  }
+                </p>
+                {selectionMode === 'custom' && selectedPaths.length > 0 && (
+                  <div style={{ marginTop: '8px', fontSize: '0.85em', color: '#0066cc' }}>
+                    <strong>📂 Selected folders:</strong> {selectedPaths.join(', ')} ({selectedPaths.length} folders)
+                  </div>
+                )}
+              </div>
             </div>
+
+            {/* Custom Folder Selection UI */}
+            {selectionMode === 'custom' && (
+              <div style={{ marginBottom: '15px', padding: '15px', backgroundColor: '#fff3cd', border: '1px solid #ffc107', borderRadius: '8px' }}>
+                <h4 style={{ margin: '0 0 10px 0', color: '#856404' }}>📂 Select Folders to Include</h4>
+
+                {/* Folder Selection View */}
+                <div style={{ marginBottom: '15px' }}>
+                  {renderFolderSelectionView()}
+                </div>
+
+                {/* Selected Folders Summary */}
+                <div style={{ padding: '10px', backgroundColor: '#f8f9fa', borderRadius: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <strong style={{ fontSize: '0.9em' }}>📂 Selected Folders ({selectedPaths.length})</strong>
+                    <button
+                      onClick={() => setSelectedPaths([])}
+                      disabled={selectedPaths.length === 0}
+                      style={{
+                        padding: '4px 8px',
+                        background: selectedPaths.length === 0 ? '#ccc' : '#dc3545',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '3px',
+                        cursor: selectedPaths.length === 0 ? 'not-allowed' : 'pointer',
+                        fontSize: '0.8em'
+                      }}
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                  {selectedPaths.length > 0 ? (
+                    <div style={{ maxHeight: '100px', overflowY: 'auto' }}>
+                      {selectedPaths.map(path => (
+                        <div key={path} style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '4px 8px',
+                          marginBottom: '4px',
+                          backgroundColor: '#e9ecef',
+                          borderRadius: '3px',
+                          fontSize: '0.85em',
+                          fontFamily: 'monospace'
+                        }}>
+                          📁 {path}
+                          <button
+                            onClick={() => setSelectedPaths(paths => paths.filter(p => p !== path))}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: '#dc3545',
+                              cursor: 'pointer',
+                              fontSize: '0.9em',
+                              marginLeft: '8px'
+                            }}
+                            title="Remove this folder"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '0.85em', color: '#666', fontStyle: 'italic' }}>
+                      No folders selected. Use the folder browser above to select folders to include in your AI snapshot.
+                    </div>
+                  )}
+                </div>
+
+                {/* Help Text */}
+                <div style={{
+                  padding: '10px',
+                  backgroundColor: '#f8d6da',
+                  border: '1px solid #f5c6cb',
+                  borderRadius: '4px',
+                  fontSize: '0.85em',
+                  color: '#721c24'
+                }}>
+                  <strong>💡 Tip:</strong> Selecting folders limits the AI analysis to only those areas. This can:
+                  <ul style={{ margin: '5px 0 0 20px', padding: 0 }}>
+                    <li>Improve accuracy by focusing on specific areas</li>
+                    <li>Reduce processing time and token costs</li>
+                    <li>Allow precise control over AI scope</li>
+                  </ul>
+                </div>
+              </div>
+            )}
           </div>
         )}
         <div style={{ marginBottom: '10px' }}>
@@ -625,9 +1134,17 @@ function App() {
         </div>
       </div>
 
+
+    </>
+  );
+
+  const renderProjectsListView = () => (
+    <>
+      <h1>📋 Projects List</h1>
+
       {/* Projects List Section */}
       <div style={{ border: '1px solid #ccc', padding: '15px', borderRadius: '5px', position: 'relative' }}>
-        <h2>Generated Projects</h2>
+        <h2>All Generated Projects</h2>
 
         {/* Loading overlay for projects */}
         {isLoadingProjects && (
@@ -673,12 +1190,13 @@ function App() {
                   <td style={{ border: '1px solid #ddd', padding: '8px' }}>{formatDate(project.lastUpdated)}</td>
                   <td style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'center' }}>
                     <button
-                      onClick={() => viewFiles(project.projectId)}
+                      onClick={() => toggleFiles(project.projectId, project.projectName)}
                       disabled={loadingFilesProjectId === project.projectId}
                       style={{
                         padding: '5px 10px',
                         marginRight: '5px',
-                        background: loadingFilesProjectId === project.projectId ? '#BA68C8' : '#9C27B0',
+                        background: loadingFilesProjectId === project.projectId ? '#BA68C8' :
+                                  expandedProjectId === project.projectId ? '#28a745' : '#9C27B0',
                         color: 'white',
                         border: 'none',
                         borderRadius: '4px',
@@ -687,8 +1205,10 @@ function App() {
                     >
                       {loadingFilesProjectId === project.projectId ? (
                         <><span style={{ marginRight: '5px' }}>⏳</span>Loading...</>
+                      ) : expandedProjectId === project.projectId ? (
+                        '🔽 Hide Files'
                       ) : (
-                        'View Files'
+                        '📂 Show Files'
                       )}
                     </button>
                     <button
@@ -735,6 +1255,53 @@ function App() {
             )}
           </tbody>
         </table>
+
+        {/* Inline File Display */}
+        {expandedProjectId && (
+          <div style={{
+            marginTop: '30px',
+            border: '2px solid #28a745',
+            borderRadius: '8px',
+            backgroundColor: '#f8fff8'
+          }}>
+            <div style={{
+              padding: '15px 20px',
+              backgroundColor: '#28a745',
+              color: 'white',
+              borderRadius: '6px 6px 0 0',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <h3 style={{ margin: 0 }}>
+                📂 {expandedProjectName} - Project Files ({expandedProjectFiles.length} items)
+              </h3>
+              <button
+                onClick={() => setExpandedProjectId(null)}
+                style={{
+                  background: '#dc3545',
+                  color: 'white',
+                  border: 'none',
+                  padding: '6px 12px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.9em'
+                }}
+              >
+                ╳ Hide Files
+              </button>
+            </div>
+
+            <div style={{
+              padding: '20px',
+              maxHeight: '500px',
+              overflow: 'auto',
+              backgroundColor: 'white'
+            }}>
+                {renderSimpleFileView()}
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
@@ -1141,14 +1708,214 @@ function App() {
     )
   );
 
+  const renderDeleteConfirmationModal = () => (
+    deleteConfirmation?.show && (
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1200
+      }}>
+        <div style={{
+          backgroundColor: 'white',
+          padding: '25px',
+          borderRadius: '12px',
+          boxShadow: '0 8px 30px rgba(0, 0, 0, 0.3)',
+          maxWidth: '500px',
+          width: '90%'
+        }}>
+          <h2 style={{ marginTop: 0, marginBottom: '15px', color: '#dc3545', display: 'flex', alignItems: 'center' }}>
+            ⚠️ Confirm Delete
+          </h2>
+
+          <p style={{ marginBottom: '20px', color: '#666', lineHeight: '1.5' }}>
+            Are you sure you want to delete the project <strong>"{deleteConfirmation.projectName}"</strong>?
+          </p>
+
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', fontSize: '0.9em', color: '#666' }}>
+              <input
+                type="checkbox"
+                checked={deleteConfirmation.deleteFiles}
+                onChange={(e) => setDeleteConfirmation({
+                  ...deleteConfirmation,
+                  deleteFiles: e.target.checked
+                })}
+                style={{ marginRight: '10px' }}
+              />
+              Also delete project files (this cannot be undone)
+            </label>
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+            <button
+              onClick={() => setDeleteConfirmation(null)}
+              style={{
+                padding: '10px 20px',
+                background: '#6c757d',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '0.9em'
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmDeleteProject}
+              disabled={deletingProjectId === deleteConfirmation.projectId}
+              style={{
+                padding: '10px 20px',
+                background: deletingProjectId === deleteConfirmation.projectId ? '#f44336' : '#dc3545',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: deletingProjectId === deleteConfirmation.projectId ? 'not-allowed' : 'pointer',
+                fontSize: '0.9em'
+              }}
+            >
+              {deletingProjectId === deleteConfirmation.projectId ? (
+                <><span style={{ marginRight: '5px' }}>⏳</span>Deleting...</>
+              ) : (
+                'Delete Project'
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  );
+
+
+
+  // Modal for viewing file content
+  const renderFileContentModal = () => (
+    viewingFileContent && (
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1010,
+        padding: '20px'
+      }}>
+        <div style={{
+          backgroundColor: 'white',
+          borderRadius: '12px',
+          boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3)',
+          width: '95%',
+          maxWidth: '1000px',
+          height: '90%',
+          maxHeight: '800px',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden'
+        }}>
+          {/* File Content Header */}
+          <div style={{
+            padding: '20px 25px',
+            borderBottom: '1px solid #dee2e6',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '12px 12px 0 0',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <div>
+              <h2 style={{ margin: 0, color: '#2c3e50' }}>
+                📄 {viewingFileContent.filename}
+              </h2>
+              <div style={{ color: '#666', fontSize: '0.9em', marginTop: '4px' }}>
+                File Content ({viewingFileContent.content.length} characters)
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(viewingFileContent.content).then(() => {
+                    alert('File content copied to clipboard!');
+                  }).catch(() => {
+                    alert('Failed to copy to clipboard');
+                  });
+                }}
+                style={{
+                  background: '#28a745',
+                  color: 'white',
+                  border: 'none',
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '0.9em'
+                }}
+              >
+                📋 Copy
+              </button>
+              <button
+                onClick={() => setViewingFileContent(null)}
+                style={{
+                  background: '#dc3545',
+                  color: 'white',
+                  border: 'none',
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '0.9em'
+                }}
+              >
+                ✕ Close
+              </button>
+            </div>
+          </div>
+
+          {/* File Content */}
+          <div style={{
+            flex: 1,
+            padding: '20px 25px',
+            overflow: 'auto',
+            backgroundColor: '#f8f9fa',
+            fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+            fontSize: '0.9em',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            lineHeight: '1.4'
+          }}>
+            {viewingFileContent.content}
+          </div>
+        </div>
+      </div>
+    )
+  );
+
+
+
   return (
     <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
       {renderNavigation()}
 
-      {currentView === 'projects' ? renderProjectsView() : renderFileTrackingView()}
+      {currentView === 'project-management' && renderProjectManagementView()}
+      {currentView === 'projects-list' && renderProjectsListView()}
+      {currentView === 'file-tracking' && renderFileTrackingView()}
 
       {/* File Names Modal */}
       {renderFileNamesModal()}
+
+      {/* Delete Confirmation Modal */}
+      {renderDeleteConfirmationModal()}
+
+      {/* File Content Modal */}
+      {renderFileContentModal()}
     </div>
   );
 }

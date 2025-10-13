@@ -292,6 +292,165 @@ app.post('/api/upload/brd', upload.single('brdFile'), async (req: any, res: Resp
   }
 });
 
+// Core update logic shared between endpoints
+async function processProjectUpdate(
+  projectId: string,
+  brdContent: string,
+  source: string,
+  fileInfo?: any,
+  selectionMode: 'feature' | 'custom' = 'feature',
+  selectedPaths: string[] = []
+): Promise<any> {
+  // Validate project exists
+  const registry = await readRegistry();
+  const project = registry.find(p => p.projectId === projectId);
+  if (!project) {
+    throw new Error('Project not found');
+  }
+
+  // Generate consistent timestamp for all operations in this update
+  const operationTimestamp = new Date().toISOString();
+
+  console.log(`🔄 ${source}: BRD length ${brdContent.length} characters for project "${project.projectName}"`);
+
+  const projectDir = path.join(PROJECTS_DIR, projectId);
+
+  let snapshot: { [key: string]: string };
+  let fileNamesSentToAI: string[] = [];
+  let updateContext: string;
+  let operationType: string;
+  let snapshotType: string;
+  let affectedFeatures: string[] = [];
+  let confidence = 'high';
+
+  if (selectionMode === 'custom' && selectedPaths.length > 0) {
+    // Custom selection mode - use user-selected paths
+    console.log('📂 Phase 1: Processing custom folder selection...');
+    console.log(`🎯 Selected paths: ${selectedPaths.join(', ')}`);
+
+    snapshot = await getCustomSnapshot(projectDir, selectedPaths, projectId);
+    fileNamesSentToAI = Object.keys(snapshot);
+
+    updateContext = `Custom selection: ${selectedPaths.join(', ')} (${fileNamesSentToAI.length} files)`;
+    operationType = 'update-custom';
+    snapshotType = 'custom-selection';
+
+    console.log(`📁 Created custom snapshot with ${fileNamesSentToAI.length} files from ${selectedPaths.length} selected paths`);
+  } else {
+    // Feature-based mode (default behavior)
+    console.log('🔍 Phase 1A: Discovering features from project structure...');
+    const discoveredFeatures = await discoverFeatures(projectDir, projectId);
+    console.log(`✅ Discovered ${discoveredFeatures.features?.length || 0} features:`, discoveredFeatures.features?.map((f: any) => f.name) || []);
+
+    console.log('📋 Phase 1B: Analyzing BRD to determine affected features...');
+    const featureAnalysis = await analyzeFeatures(brdContent, discoveredFeatures.features || [], projectId);
+    affectedFeatures = featureAnalysis.affectedFeatures;
+    confidence = featureAnalysis.confidence;
+
+    console.log(`🎯 AI determined ${affectedFeatures.length} affected features:`, affectedFeatures);
+    console.log(`📊 Confidence level: ${confidence}`);
+
+    // Phase 2: Create targeted snapshot based on AI analysis
+    const updateResult = await createOptimizedSnapshot(projectDir, affectedFeatures, projectId, confidence);
+
+    snapshot = updateResult.snapshot;
+    fileNamesSentToAI = updateResult.fileNamesSentToAI;
+    updateContext = updateResult.updateContext;
+    operationType = updateResult.operationType;
+    snapshotType = updateResult.snapshotType;
+  }
+
+  // Coordinated logging with consistent timestamp
+  console.log(`📋 Logging operation: ${operationType} with ${fileNamesSentToAI.length} files`);
+  await Promise.all([
+    logFilesSentToAI(projectId, operationType, fileNamesSentToAI, operationTimestamp),
+    logSnapshotFiles(projectId, operationType, snapshotType, snapshot, operationTimestamp)
+  ]);
+
+  // Phase 3: AI Update - Process the snapshot
+  console.log('🔧 Phase 3: Processing AI update...');
+  const aiResponse = await updateProject(brdContent, snapshot, projectId, updateContext);
+
+  // Apply operations
+  await applyOperations(projectDir, aiResponse.operations);
+
+  project.lastUpdated = new Date().toISOString();
+  await writeRegistry(registry);
+
+  console.log(`✅ Project updated successfully! Applied ${aiResponse.operations?.length || 0} operations`);
+
+  return {
+    projectId,
+    projectName: project.projectName,
+    affectedFeatures,
+    confidence,
+    filesProcessed: fileNamesSentToAI.length,
+    operationsApplied: aiResponse.operations?.length || 0,
+    operationType,
+    fileInfo,
+    updateContext,
+    selectedPaths: selectionMode === 'custom' ? selectedPaths : null,
+    selectionMode
+  };
+}
+
+// Optimized snapshot creation function
+async function createOptimizedSnapshot(projectDir: string, affectedFeatures: string[], projectId: string, confidence: string) {
+  let snapshot: { [key: string]: string };
+  let fileNamesSentToAI: string[] = [];
+  let updateContext: string;
+  let operationType: string;
+  let snapshotType: string;
+
+  if (affectedFeatures.length > 0) {
+    console.log('🎯 Phase 2: Creating targeted snapshot of affected features...');
+
+    // Convert feature names to folder paths
+    const featurePaths: string[] = [];
+    for (const featureName of affectedFeatures) {
+      // Add both backend and frontend feature folders if available
+      featurePaths.push(`backend/src/${featureName}`);
+      featurePaths.push(`frontend/src/${featureName}`);
+    }
+
+    snapshot = await getFeatureSnapshot(projectDir, featurePaths, projectId);
+    fileNamesSentToAI = Object.keys(snapshot);
+    snapshotType = 'feature-based';
+
+    if (fileNamesSentToAI.length > 0) {
+      updateContext = `AI-detected features: ${affectedFeatures.join(', ')} (${fileNamesSentToAI.length} files)`;
+      operationType = 'update-targeted';
+      console.log(`📁 Created targeted snapshot with ${fileNamesSentToAI.length} files from ${affectedFeatures.length} features`);
+    } else {
+      // Targeted snapshot failed, fall back to full snapshot
+      console.log('⚠️ Targeted snapshot failed, falling back to full project snapshot...');
+      snapshot = await getFilesSnapshot(projectDir, projectId);
+      fileNamesSentToAI = Object.keys(snapshot);
+      updateContext = `Full project update (targeted snapshot failed for features: ${affectedFeatures.join(', ')})`;
+      operationType = 'update-full';
+      snapshotType = 'full-project';
+      console.log(`📁 Created fallback full snapshot with ${fileNamesSentToAI.length} files`);
+    }
+  } else {
+    // No features detected, use full project update
+    console.log('⚠️ AI could not determine affected features, using full project snapshot...');
+    snapshot = await getFilesSnapshot(projectDir, projectId);
+    fileNamesSentToAI = Object.keys(snapshot);
+    updateContext = `Full project update (AI fallback - confidence: ${confidence})`;
+    operationType = 'update-full';
+    snapshotType = 'full-project';
+    console.log(`📁 Created full snapshot with ${fileNamesSentToAI.length} files`);
+  }
+
+  return {
+    snapshot,
+    fileNamesSentToAI,
+    updateContext,
+    operationType,
+    snapshotType
+  };
+}
+
 // Upload BRD file and update existing project
 app.post('/api/upload/brd/:projectId', upload.single('brdFile'), async (req: any, res: Response) => {
   try {
@@ -301,89 +460,30 @@ app.post('/api/upload/brd/:projectId', upload.single('brdFile'), async (req: any
 
     const { projectId } = req.params;
     const file = req.file;
-
-    // Validate project exists
-    const registry = await readRegistry();
-    const project = registry.find(p => p.projectId === projectId);
-    if (!project) {
-      return res.status(404).json({ error: 'Project not found' });
-    }
-
     const brdContent = await extractBrdContent(file);
 
-    console.log(`📄 BRD file uploaded for update: "${file.originalname}" (${brdContent.length} characters) for project "${project.projectName}"`);
+    console.log(`📄 BRD file uploaded: "${file.originalname}" (${brdContent.length} characters)`);
 
-    const projectDir = path.join(PROJECTS_DIR, projectId);
-
-    // Phase 1A: AI Feature Discovery
-    console.log('🔍 Phase 1A: Discovering features from project structure...');
-    const discoveredFeatures = await discoverFeatures(projectDir, projectId);
-    console.log(`✅ Discovered ${discoveredFeatures.features?.length || 0} features`);
-
-    // Phase 1B: AI BRD Analysis
-    console.log('📋 Phase 1B: Analyzing BRD to determine affected features...');
-    const featureAnalysis = await analyzeFeatures(brdContent, discoveredFeatures.features || [], projectId);
-    const { affectedFeatures, confidence } = featureAnalysis;
-    console.log(`🎯 AI determined ${affectedFeatures.length} affected features`);
-
-    // Phase 2: Create targeted snapshot
-    let snapshot: { [key: string]: string };
-    let fileNamesSentToAI: string[] = [];
-    let updateContext: string;
-
-    if (affectedFeatures.length > 0) {
-      console.log('🎯 Phase 2: Creating targeted snapshot...');
-
-      // Convert feature names to folder paths
-      const featurePaths: string[] = [];
-      for (const featureName of affectedFeatures) {
-        // Add both backend and frontend feature folders if available
-        featurePaths.push(`backend/src/${featureName}`);
-        featurePaths.push(`frontend/src/${featureName}`);
+    const result = await processProjectUpdate(
+      projectId,
+      brdContent,
+      'File Upload',
+      {
+        fileName: file.originalname,
+        fileSize: file.size,
+        contentType: file.mimetype
       }
-
-      snapshot = await getFeatureSnapshot(projectDir, featurePaths, projectId);
-      fileNamesSentToAI = Object.keys(snapshot);
-      updateContext = `AI-detected features: ${affectedFeatures.join(', ')} (${fileNamesSentToAI.length} files)`;
-    } else {
-      console.log('⚠️ AI could not determine affected features, using full project snapshot...');
-      snapshot = await getFilesSnapshot(projectDir, projectId);
-      fileNamesSentToAI = Object.keys(snapshot);
-      updateContext = `Full project update (AI fallback - confidence: ${confidence})`;
-    }
-
-    // Log files sent to AI
-    await logFilesSentToAI(projectId, affectedFeatures.length > 0 && fileNamesSentToAI.length > 0 ? 'update-targeted' : 'update-full', fileNamesSentToAI);
-
-    // Phase 3: AI Update
-    console.log('🔧 Phase 3: Processing AI update...');
-    const aiResponse = await updateProject(brdContent, snapshot, projectId, updateContext);
-
-    // Apply operations
-    await applyOperations(projectDir, aiResponse.operations);
-
-    project.lastUpdated = new Date().toISOString();
-    await writeRegistry(registry);
-
-    console.log(`✅ Project updated successfully from BRD file! Applied ${aiResponse.operations?.length || 0} operations`);
+    );
 
     res.json({
       success: true,
       operation: 'update',
-      projectId,
-      projectName: project.projectName,
-      fileName: file.originalname,
-      fileSize: file.size,
-      contentType: file.mimetype,
-      affectedFeatures,
-      confidence,
-      filesProcessed: fileNamesSentToAI.length,
-      operationsApplied: aiResponse.operations?.length || 0,
-      message: `Project "${project.projectName}" updated successfully from uploaded BRD file`
+      ...result,
+      message: `Project "${result.projectName}" updated successfully from uploaded BRD file`
     });
 
   } catch (error) {
-    console.error('BRD update error:', error);
+    console.error('BRD file update error:', error);
     res.status(500).json({
       error: 'Failed to update project from BRD file',
       details: error instanceof Error ? error.message : 'Unknown error'
@@ -544,101 +644,34 @@ app.post('/api/projects', async (req: Request, res: Response) => {
 app.post('/api/projects/:projectId/update', async (req: Request, res: Response) => {
   const { projectId } = req.params;
   try {
-    const { brd } = req.body;
+    const { brd, selectionMode, selectedPaths } = req.body;
     if (!brd) return res.status(400).json({ error: 'BRD text required' });
 
-    const registry = await readRegistry();
-    const project = registry.find(p => p.projectId === projectId);
-    if (!project) return res.status(404).json({ error: 'Project not found' });
-
-    const projectDir = path.join(PROJECTS_DIR, projectId);
-
-    console.log(`🚀 Starting AI-driven update for project: ${project.projectName}`);
-
-    // Phase 1A: AI Feature Discovery - Analyze project structure
-    console.log('🔍 Phase 1A: Discovering features from project structure...');
-    const discoveredFeatures = await discoverFeatures(projectDir, projectId);
-    console.log(`✅ Discovered ${discoveredFeatures.features?.length || 0} features:`, discoveredFeatures.features?.map((f: any) => f.name) || []);
-
-    // Phase 1B: AI BRD Analysis - Determine affected features
-    console.log('📋 Phase 1B: Analyzing BRD to determine affected features...');
-    const featureAnalysis = await analyzeFeatures(brd, discoveredFeatures.features || [], projectId);
-    const { affectedFeatures, confidence } = featureAnalysis;
-
-    console.log(`🎯 AI determined ${affectedFeatures.length} affected features:`, affectedFeatures);
-    console.log(`📊 Confidence level: ${confidence}`);
-
-    let snapshot: { [key: string]: string };
-    let updateContext: string;
-    let fileNamesSentToAI: string[] = [];
-
-    // Phase 2: Create targeted snapshot based on AI analysis
-    if (affectedFeatures.length > 0) {
-      console.log('🎯 Phase 2: Creating targeted snapshot of affected features...');
-
-      // Convert feature names to folder paths
-      const featurePaths: string[] = [];
-      for (const featureName of affectedFeatures) {
-        // Add both backend and frontend feature folders if available
-        featurePaths.push(`backend/src/${featureName}`);
-        featurePaths.push(`frontend/src/${featureName}`);
-      }
-
-      snapshot = await getFeatureSnapshot(projectDir, featurePaths);
-      fileNamesSentToAI = Object.keys(snapshot);
-
-      if (fileNamesSentToAI.length > 0) {
-        updateContext = `AI-detected features: ${affectedFeatures.join(', ')} (${fileNamesSentToAI.length} files)`;
-        console.log(`📁 Created targeted snapshot with ${fileNamesSentToAI.length} files from ${affectedFeatures.length} features`);
-      } else {
-        // Targeted snapshot failed, fall back to full snapshot
-        console.log('⚠️ Targeted snapshot failed, falling back to full project snapshot...');
-        snapshot = await getFilesSnapshot(projectDir, projectId);
-        fileNamesSentToAI = Object.keys(snapshot);
-        updateContext = `Full project update (targeted snapshot failed for features: ${affectedFeatures.join(', ')})`;
-        console.log(`📁 Created fallback full snapshot with ${fileNamesSentToAI.length} files`);
-      }
-    } else {
-      // No features detected, use full project update
-      console.log('⚠️ AI could not determine affected features, using full project snapshot...');
-      snapshot = await getFilesSnapshot(projectDir, projectId);
-      fileNamesSentToAI = Object.keys(snapshot);
-      updateContext = `Full project update (AI fallback - confidence: ${confidence})`;
-      console.log(`📁 Created full snapshot with ${fileNamesSentToAI.length} files`);
+    if (selectionMode === 'custom' && (!selectedPaths || selectedPaths.length === 0)) {
+      return res.status(400).json({ error: 'Selected paths required for custom selection mode' });
     }
 
-    // Log files sent to AI with proper categorization
-    await logFilesSentToAI(
+    const result = await processProjectUpdate(
       projectId,
-      affectedFeatures.length > 0 && fileNamesSentToAI.length > 0 ? 'update-targeted' : 'update-full',
-      fileNamesSentToAI
+      brd,
+      'Text Update',
+      undefined,
+      selectionMode || 'feature',
+      selectedPaths || []
     );
 
-    // Phase 3: AI Update - Process the targeted snapshot
-    console.log('🔧 Phase 3: Processing targeted update...');
-    const aiResponse = await updateProject(brd, snapshot, projectId, updateContext);
-
-    // Apply operations to update project files
-    await applyOperations(projectDir, aiResponse.operations);
-
-    project.lastUpdated = new Date().toISOString();
-    await writeRegistry(registry);
-
-    console.log(`✅ Update completed successfully! Applied ${aiResponse.operations?.length || 0} operations`);
-
     res.json({
-      ...registry,
-      updateSummary: {
-        affectedFeatures,
-        confidence,
-        filesProcessed: fileNamesSentToAI.length,
-        operationsApplied: aiResponse.operations?.length || 0,
-        updateContext
-      }
+      success: true,
+      operation: 'update',
+      ...result,
+      message: `Project "${result.projectName}" updated successfully`
     });
   } catch (error) {
-    console.error('❌ Update project error:', error);
-    res.status(500).json({ error: 'Failed to update project' });
+    console.error('Text update project error:', error);
+    res.status(500).json({
+      error: 'Failed to update project',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 });
 
@@ -1916,12 +1949,12 @@ Snapshot: ${JSON.stringify(snapshot)}`;
 async function getFeatureSnapshot(projectDir: string, featurePaths: string[], projectId?: string): Promise<{ [key: string]: string }> {
   const snapshot: { [key: string]: string } = {};
 
-    console.log(`🔍 getFeatureSnapshot called with projectDir: ${projectDir}`);
-    console.log(`🎯 Feature paths to match:`, featurePaths);
+  console.log(`🔍 getFeatureSnapshot called with projectDir: ${projectDir}`);
+  console.log(`🎯 Feature paths to match:`, featurePaths);
 
-    // Normalize paths to forward slashes for consistency
-    featurePaths = featurePaths.map(path => path.replace(/\\/g, '/'));
-    console.log(`🔄 Normalized feature paths:`, featurePaths);
+  // Normalize paths to forward slashes for consistency
+  featurePaths = featurePaths.map(path => path.replace(/\\/g, '/'));
+  console.log(`🔄 Normalized feature paths:`, featurePaths);
 
   // Define file patterns to exclude for better performance
   const excludePatterns = [
@@ -2002,13 +2035,11 @@ async function getFeatureSnapshot(projectDir: string, featurePaths: string[], pr
     console.error('Error reading feature files:', error);
   }
 
-  // Log snapshot file names
-  await logSnapshotFiles(projectId || 'unknown', 'update', 'feature-based', snapshot);
-
+  // Note: Logging is now handled externally with consistent timestamps
   return snapshot;
 }
 
-async function getFilesSnapshot(projectDir: string, projectId?: string) {
+async function getFilesSnapshot(projectDir: string, projectId?: string): Promise<{ [key: string]: string }> {
   const snapshot: { [key: string]: string } = {};
 
   // Define file patterns to exclude for better performance
@@ -2057,8 +2088,102 @@ async function getFilesSnapshot(projectDir: string, projectId?: string) {
     console.error('Error reading project files:', error);
   }
 
-  // Log snapshot file names
-  await logSnapshotFiles(projectId || 'unknown', 'update', 'full-project', snapshot);
+  // Note: Logging is now handled externally with consistent timestamps
+  return snapshot;
+}
+
+// Custom selection snapshot function - processes only user-selected paths
+async function getCustomSnapshot(projectDir: string, selectedPaths: string[], projectId?: string): Promise<{ [key: string]: string }> {
+  const snapshot: { [key: string]: string } = {};
+
+  // Define file patterns to exclude for better performance
+  const excludePatterns = [
+    /node_modules/,           // Dependencies
+    /\.git/,                  // Git repository
+    /dist/,                   // Build output
+    /build/,                  // Build output
+    /\.log$/,                 // Log files
+    /logs\//,                 // Logs directory
+    /\.(jpg|jpeg|png|gif|svg|ico|woff|woff2|ttf|eot)$/, // Images and fonts
+    /package-lock\.json/,     // Lock files
+    /yarn\.lock/,            // Lock files
+    /\.env/,                  // Environment files
+    /\.DS_Store/,            // macOS system files
+    /Thumbs\.db/,            // Windows system files
+    /\.tmp$/,                // Temporary files
+    /\.(zip|tar|gz|rar|7z)$/, // Archives
+    /\.min\.(js|css)$/       // Minified files
+  ];
+
+  console.log(`🔍 getCustomSnapshot called with projectDir: ${projectDir}`);
+  console.log(`🎯 Selected paths to process:`, selectedPaths);
+
+  try {
+    const allFiles = await fs.readdir(projectDir, { recursive: true, withFileTypes: true });
+    console.log(`📊 Found ${allFiles.length} total files in project`);
+
+    let processedFiles = 0;
+
+    // Process each selected path
+    for (const selectedPath of selectedPaths) {
+      console.log(`🔎 Processing selected path: "${selectedPath}"`);
+
+      let filesMatched = 0;
+
+      // Find files that match the selected path (either directly or are within the selected directory)
+      for (const file of allFiles) {
+        if (file.isFile()) {
+          const relativePath = path.relative(projectDir, path.join(file.parentPath, file.name));
+
+          // Check if file is within or matches the selected path
+          let shouldInclude = false;
+
+          // Case 1: Selected path is a direct file match
+          if (relativePath === selectedPath) {
+            shouldInclude = true;
+          }
+          // Case 2: Selected path is a directory, include files within it
+          else if (relativePath.startsWith(selectedPath + '/')) {
+            shouldInclude = true;
+          }
+          // Case 3: For top-level selections like "backend" or "frontend", include subdirectory files
+          else if (!selectedPath.includes('/') &&
+                   (relativePath.startsWith(`${selectedPath}/`) || relativePath.startsWith(`${selectedPath}\\`))) {
+            shouldInclude = true;
+          }
+
+          if (shouldInclude) {
+            // Skip files matching exclude patterns
+            const shouldExclude = excludePatterns.some(pattern => pattern.test(relativePath));
+
+            if (!shouldExclude) {
+              filesMatched++;
+              processedFiles++;
+
+              console.log(`✅ Including file: ${relativePath}`);
+
+              try {
+                const content = await fs.readFile(path.join(file.parentPath, file.name), 'utf-8');
+                snapshot[relativePath] = content;
+              } catch (readError) {
+                // Skip files that can't be read (binary files, permission issues, etc.)
+                console.warn(`Skipping unreadable file: ${relativePath}`);
+              }
+            } else {
+              console.log(`⚠️ Excluding file (pattern match): ${relativePath}`);
+            }
+          }
+        }
+      }
+
+      console.log(`📂 ${selectedPath}: ${filesMatched} files matched`);
+    }
+
+    console.log(`📁 getCustomSnapshot completed: ${processedFiles} files processed, ${Object.keys(snapshot).length} files in snapshot`);
+
+  } catch (error) {
+    console.error('Error reading custom snapshot files:', error);
+  }
 
   return snapshot;
 }

@@ -1,56 +1,8 @@
 [
   {
-    "projectId": "8d11ac5b-fbd9-49cb-8e9d-e97257fe801a",
-    "projectName": "patient-onboarding",
-    "createdAt": "2025-09-30T10:07:59.842Z",
-    "lastUpdated": "2025-10-06T06:27:16.996Z"
-  },
-  {
-    "projectId": "9e567039-a0ae-4674-a6e3-66b9a7b9ed62",
-    "projectName": "rcm-claim-import-x12-validation",
-    "createdAt": "2025-10-06T07:36:22.989Z",
-    "lastUpdated": "2025-10-06T07:36:22.989Z"
-  },
-  {
-    "projectId": "f7e0deab-2ca4-403a-8227-37ff683dd907",
-    "projectName": "rcm-claim-import-x12-validation",
-    "createdAt": "2025-10-06T07:41:03.794Z",
-    "lastUpdated": "2025-10-06T07:41:03.794Z"
-  },
-  {
-    "projectId": "036f988e-07a8-40ac-9ca7-e9d074b54fb4",
-    "projectName": "rcm-claim-import-x12-validation",
-    "createdAt": "2025-10-06T07:47:59.841Z",
-    "lastUpdated": "2025-10-06T07:47:59.841Z"
-  },
-  {
-    "projectId": "53456e97-fba0-4f61-aea4-ea7e4e312411",
-    "projectName": "rcm-claim-import-x12-validation",
-    "createdAt": "2025-10-06T07:55:57.985Z",
-    "lastUpdated": "2025-10-06T07:55:57.985Z"
-  },
-  {
-    "projectId": "2668b66a-5a05-4698-9501-5e7924f608e2",
+    "projectId": "80ca5690-947f-4332-b60e-82ab27656b9c",
     "projectName": "employee-registration-system",
-    "createdAt": "2025-10-10T05:49:10.675Z",
-    "lastUpdated": "2025-10-10T05:49:10.675Z"
-  },
-  {
-    "projectId": "2c79647f-5ce3-40a0-be63-3162e5abfee2",
-    "projectName": "employee-registration-system",
-    "createdAt": "2025-10-10T06:01:13.083Z",
-    "lastUpdated": "2025-10-10T06:01:13.083Z"
-  },
-  {
-    "projectId": "f8a94602-efa7-421d-a5fd-043f85f65fc5",
-    "projectName": "employee-registration-system",
-    "createdAt": "2025-10-10T06:12:39.527Z",
-    "lastUpdated": "2025-10-10T06:15:14.295Z"
-  },
-  {
-    "projectId": "2da1e804-6d28-4f05-92d2-9bd06ac08eb7",
-    "projectName": "employee-registration-system",
-    "createdAt": "2025-10-10T07:04:40.518Z",
-    "lastUpdated": "2025-10-10T07:04:40.518Z"
+    "createdAt": "2025-10-10T09:20:42.596Z",
+    "lastUpdated": "2025-10-10T10:42:43.214Z"
   }
 ]

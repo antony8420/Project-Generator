@@ -61,13 +61,14 @@ export async function logAICall(logEntry: AILogEntry): Promise<void> {
  * @param projectId - The project ID
  * @param operation - The operation type ('generate' | 'update')
  * @param fileNames - Array of file names sent to AI
+ * @param customTimestamp - Optional timestamp (defaults to current time)
  */
-export async function logFilesSentToAI(projectId: string, operation: string, fileNames: string[]): Promise<void> {
+export async function logFilesSentToAI(projectId: string, operation: string, fileNames: string[], customTimestamp?: string): Promise<void> {
   try {
     await fs.ensureDir(LOGS_DIR);
 
     const logEntry = {
-      timestamp: new Date().toISOString(),
+      timestamp: customTimestamp || new Date().toISOString(),
       projectId,
       operation,
       fileCount: fileNames.length,
@@ -149,8 +150,9 @@ export async function getProjectTotalFileCount(projectId: string): Promise<numbe
  * @param operation - The operation type
  * @param snapshotType - Type of snapshot (e.g., 'feature-based', 'full-project')
  * @param snapshot - The snapshot object with file paths as keys
+ * @param customTimestamp - Optional timestamp (defaults to current time)
  */
-export async function logSnapshotFiles(projectId: string, operation: string, snapshotType: string, snapshot: { [key: string]: string }): Promise<void> {
+export async function logSnapshotFiles(projectId: string, operation: string, snapshotType: string, snapshot: { [key: string]: string }, customTimestamp?: string): Promise<void> {
   try {
     const fileNames = Object.keys(snapshot);
     const fileCount = fileNames.length;
@@ -170,7 +172,7 @@ export async function logSnapshotFiles(projectId: string, operation: string, sna
     await fs.ensureDir(LOGS_DIR);
 
     const logEntry = {
-      timestamp: new Date().toISOString(),
+      timestamp: customTimestamp || new Date().toISOString(),
       projectId,
       operation,
       snapshotType,
