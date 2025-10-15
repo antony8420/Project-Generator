@@ -2,9 +2,9 @@
 // Feature-based folder organization where each feature has its own folder
 // containing models, views, services, controllers, etc.
 
-export const GENERATE_PROJECT_PROMPT = `You are an expert software architect and code generation assistant. Read the BRD and create a complete React + Node.js (TypeScript) project based on the requirements.
+export const GENERATE_PROJECT_PROMPT = `You are an expert full-stack developer. Generate a COMPLETE React + Node.js (TypeScript) application with FULL CRUD operations based on the BRD.
 
-IMPORTANT: You decide the BEST folder structure and architecture based on the BRD requirements. Don't force any specific patterns unless they naturally fit the requirements.
+MANDATORY: Use FEATURE-BASED FOLDER ORGANIZATION. Group ALL related functionality into feature folders.
 
 Input:
 - BRD text
@@ -13,53 +13,92 @@ Input:
 Output: strict JSON:
 {
   "projectName": "<name>",
-  "architecture": "<brief description of chosen architecture and reasoning>",
-  "folderStructure": "description of how files are organized",
+  "architecture": "Feature-based modular architecture with complete CRUD operations",
+  "folderStructure": "Each business feature in separate folders with controllers/models/routes/components",
   "operations": [
     {
-      "op": "create" | "modify" | "delete",
+      "op": "create",
       "path": "relative/path/to/file",
-      "content": "file contents (for create/modify)",
-      "reason": "why this file is needed and what it does"
+      "content": "file contents",
+      "reason": "why this file is needed"
     }
   ],
-  "summary": "short summary of the complete project"
+  "summary": "Complete React + Node.js CRUD application"
 }
 
-ARCHITECTURE DECISION GUIDELINES:
-1. Analyze the BRD requirements thoroughly and choose the most appropriate structure
-2. Consider the complexity, scale, and type of application (CRUD, analytics, ML, etc.)
-3. Common patterns include (but are NOT required):
-   - Feature-based organization
-   - Domain-driven design
-   - MVC pattern
-   - Service-oriented architecture
-   - Monolithic structure
+MANDATORY FILE STRUCTURE:
+Backend:
+├── src/
+│   └── {feature}/                    # Feature folder (e.g., employees, users)
+│       ├── controllers/              # Business logic layer
+│       │   └── {feature}Controller.ts # CRUD operations
+│       ├── models/                   # Data models & validation
+│       │   └── {Feature}.ts         # TypeScript interfaces & validation
+│       ├── routes/                   # API route definitions
+│       │   └── {feature}Routes.ts    # Express routes
+│       ├── services/                 # Service layer
+│       │   └── {feature}Service.ts   # Data access & business logic
+│       └── utils/                    # Feature-specific utilities
+│           └── validation.ts         # Input validation
+├── data/{feature}.json               # Sample data JSON file
+└── package.json                      # Dependencies
 
-4. For different types of applications:
-   - Simple CRUD apps: Consider flat/functional organization
-   - Complex business apps: Consider modular/domain-based structure
-   - ML/Analytics apps: Consider algorithm-focused organization
-   - Real-time apps: Consider event-driven structure
+Frontend:
+├── src/
+│   └── {feature}/                    # Feature folder
+│       ├── components/               # Reusable React components
+│       │   ├── {Feature}Form.tsx     # Create/Update form
+│       │   ├── {Feature}List.tsx     # Data display table
+│       │   └── {Feature}Profile.tsx  # Detail view
+│       ├── pages/                    # Page components
+│       │   ├── {Feature}FormPage.tsx # Form page
+│       │   ├── {Feature}ListPage.tsx # List page
+│       │   └── {Feature}ProfilePage.tsx # Detail page
+│       ├── services/                 # API client services
+│       │   └── {feature}Api.ts       # HTTP client functions
+│       ├── types/                    # TypeScript types
+│       │   └── {Feature}.ts          # Frontend types
+│       └── utils/                    # Feature utilities
+│           └── validation.ts         # Frontend validation
+├── components/                       # Shared components
+│   ├── Layout.tsx
+│   └── Navigation.tsx
+├── pages/
+│   ├── Home.tsx                     # Dashboard/Home page
+├── services/                         # Global services
+├── types/                           # Global types
+└── package.json                      # Dependencies
 
-WHATEVER ARCHITECTURE YOU CHOOSE:
-1. Create comprehensive, WORKING TypeScript implementations
-2. Use proper imports/exports, interfaces, classes, and error handling
-3. Include realistic sample data files with JSON
-4. Implement complete CRUD operations where needed
-5. Create functional React components with proper JSX syntax
-6. Include appropriate middleware, validation, and security
-7. Add utility functions, types, and services as needed
-8. Ensure all dependencies are properly imported and configured
+MANDATORY CRUD IMPLEMENTATION:
+Each feature MUST implement ALL CRUD operations:
+- CREATE: POST /api/{feature} - Add new records with validation
+- READ: GET /api/{feature} - List all records with pagination
+- READ: GET /api/{feature}/:id - Get single record by ID
+- UPDATE: PUT /api/{feature}/:id - Update existing record
+- DELETE: DELETE /api/{feature}/:id - Delete record with confirmation
 
-CRITICAL REQUIREMENTS:
-- Use TypeScript for ALL code files
-- CRITICAL: ALWAYS create both backend/package.json AND frontend/package.json
-- All projects must run with \`npm install && npm run dev\` in both directories
-- Use async JSON file-based storage as primary persistence
-- Generate realistic, executable code that can run immediately
-- Create comprehensive solutions - don't skimp on important functionality
-- Do not output anything except the JSON object`;
+REQUIRED FEATURES FOR ALL PROJECTS:
+- Employee Management (full CRUD)
+- User Interface (React components for all CRUD operations)
+- API Integration (complete REST endpoints)
+- Form Validation (frontend + backend)
+- Error Handling (comprehensive error responses)
+- Sample Data (realistic JSON data for testing)
+
+TECHNICAL REQUIREMENTS:
+- TypeScript for ALL files (backend + frontend)
+- Express.js backend with proper middleware
+- React frontend with functional components
+- JSON file-based data storage (async operations)
+- Proper error handling and validation
+- Responsive UI design
+- API client with axios/fetch
+- Form validation (client and server)
+- Loading states and user feedback
+
+CRITICAL: Generate COMPLETE, RUNNABLE applications with all necessary files - no omissions allowed.
+
+Do not output anything except the JSON object`;
 
 export const FEATURE_DISCOVERY_PROMPT = `You are a project structure analysis assistant. Analyze a project's file and folder structure and identify the business features/modules.
 
@@ -132,15 +171,13 @@ Rules:
 - Confidence should reflect how certain you are about the mapping
 - Do not output anything except the JSON object.`;
 
-export const UPDATE_PROJECT_PROMPT = `You are a code generation assistant. Convert a BRD into project file operations for updating a React + Node.js (TypeScript) full-stack app with file-based JSON storage.
+export const UPDATE_PROJECT_PROMPT = `You are a code generation assistant. Update existing React + Node.js (TypeScript) projects using FEATURE-BASED folder organization.
 
-IMPORTANT: Use FEATURE-BASED folder organization. Each feature should have its own folder containing ALL related components.
-IMPORTANT: This is Phase 2 - you receive a TARGETED snapshot containing ONLY the files from affected features.
+CRITICAL: Keep modifications within EXISTING feature folders - DO NOT change the overall architecture.
 
 Input:
-- BRD text
+- BRD text describing changes
 - Mode: "update"
-- Feature context: "<list of affected features detected in Phase 1>"
 - Snapshot: targeted snapshot containing ONLY files from affected features
 
 Output: strict JSON:
@@ -149,24 +186,43 @@ Output: strict JSON:
     {
       "op": "create" | "modify" | "delete",
       "path": "relative/path/to/file",
-      "content": "file contents (for create/modify)",
+      "content": "updated file contents",
       "reason": "why this change is needed"
     }
   ],
   "summary": "short summary of changes"
 }
 
-TARGETED UPDATE RULES:
-1. You receive a PRE-FILTERED snapshot containing only relevant feature files
-2. Only modify files within the feature folders included in the snapshot
-3. Do not create new features unless explicitly requested in BRD
-4. Maintain feature isolation - do not modify files outside the provided snapshot
-5. Respect user-protected regions: \`// BEGIN USER CODE\` … \`// END USER CODE\`
+MODIFICATION RULES FOR EXISTING PROJECTS:
+1. Add/modify files ONLY within existing feature folders (e.g., employees/, departments/)
+2. If adding new CRUD operations, use existing feature structure (controllers, models, services, etc.)
+3. For React components: modify within existing component folders
+4. For APIs: modify routes within existing feature route folders
+5. Keep data storage in existing JSON files under /data/
+6. Respect existing TypeScript types and interfaces
+7. Preserve user-protected regions: \`// BEGIN USER CODE\` … \`// END USER CODE\`
 
-Rules:
-- Use TypeScript for frontend and backend.
-- Only modify the files provided in the targeted snapshot.
-- Respect user-protected regions: \`// BEGIN USER CODE\` … \`// END USER CODE\`.
-- All projects must run with \`npm install && npm run dev\` in frontend and backend.
-- Use async JSON file-based storage under \`/data/\`.
-- Do not output anything except the JSON object.`;
+ALLOWED CHANGES:
+- Add new methods to existing controllers/services
+- Create new components/pages within feature folders
+- Modify existing models to add new fields
+- Update routes to add new endpoints
+- Add validation logic to existing validators
+- Create new utility functions in feature utils
+
+FORBIDDEN CHANGES:
+- Create new feature folders unless BRD explicitly requests new business domains
+- Change the overall folder structure/architecture
+- Modify files outside the affected feature folders
+- Change core configuration files (package.json, tsconfig.json, etc.)
+
+TECHNICAL REQUIREMENTS:
+- Use TypeScript for all new/modified files
+- Maintain consistent code patterns with existing project
+- Add proper error handling and validation
+- Ensure backward compatibility with existing features
+- Update sample data if new fields are added
+- Maintain React component naming conventions
+- Use proper async/await patterns
+
+Do not output anything except the JSON object`;

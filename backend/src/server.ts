@@ -161,6 +161,8 @@ app.post('/api/upload/brd', upload.single('brdFile'), async (req: any, res: Resp
 
     // Apply operations to create project files
     const projectDir = path.join(PROJECTS_DIR, projectId);
+
+    // Ensure proper project structure exists
     const requiredOperations = [
       {
         op: 'create',
@@ -178,14 +180,18 @@ app.post('/api/upload/brd', upload.single('brdFile'), async (req: any, res: Resp
           dependencies: {
             express: '^4.18.2',
             cors: '^2.8.5',
-            'fs-extra': '^11.1.1'
+            'fs-extra': '^11.1.1',
+            'uuid': '^9.0.1',
+            'body-parser': '^1.20.2'
           },
           devDependencies: {
             typescript: '^5.2.2',
             'ts-node': '^10.9.1',
             '@types/express': '^4.17.17',
             '@types/cors': '^2.8.17',
-            '@types/fs-extra': '^11.0.1'
+            '@types/fs-extra': '^11.0.1',
+            '@types/uuid': '^9.0.1',
+            '@types/node': '^20.0.0'
           }
         }, null, 2),
         reason: 'Create backend package.json for Node.js dependencies'
@@ -203,7 +209,8 @@ app.post('/api/upload/brd', upload.single('brdFile'), async (req: any, res: Resp
             moduleDetection: 'node',
             allowSyntheticDefaultImports: true,
             skipLibCheck: true,
-            forceConsistentCasingInFileNames: true
+            forceConsistentCasingInFileNames: true,
+            esModuleInterop: true
           },
           include: ['src/**/*'],
           exclude: ['node_modules', 'dist', 'data']
@@ -263,8 +270,119 @@ app.post('/api/upload/brd', upload.single('brdFile'), async (req: any, res: Resp
           references: [{ path: './tsconfig.node.json' }]
         }, null, 2),
         reason: 'Create frontend TypeScript configuration'
+      },
+      {
+        op: 'create',
+        path: 'frontend/vite.config.ts',
+        content: `import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+// https://vitejs.dev/config/
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    host: '0.0.0.0',
+    port: 3001
+  }
+})`,
+        reason: 'Create Vite configuration for frontend development'
+      },
+      {
+        op: 'create',
+        path: 'frontend/index.html',
+        content: `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${aiResponse.projectName}</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/index.tsx"></script>
+  </body>
+</html>`,
+        reason: 'Create HTML entry point for React application'
       }
     ];
+
+    // Validate AI response contains required operations
+    const requiredFiles = [
+      'backend/src/index.ts',
+      'frontend/src/App.tsx',
+      'frontend/src/index.tsx'
+    ];
+
+    const hasRequiredFiles = requiredFiles.every(requiredFile =>
+      aiResponse.operations.some(op => op.path === requiredFile)
+    );
+
+    if (!hasRequiredFiles) {
+      console.log('⚠️ AI response missing required files, adding them...');
+
+      // Add missing core files if AI didn't generate them
+      const missingFiles = [
+        !aiResponse.operations.some(op => op.path === 'backend/src/index.ts') && {
+          op: 'create' as const,
+          path: 'backend/src/index.ts',
+          content: `import express from 'express';
+import cors from 'cors';
+import bodyParser from 'body-parser';
+
+// Import feature routes
+import employeeRoutes from './employees/routes/employeeRoutes';
+
+const app = express();
+const PORT = 4000;
+
+app.use(cors());
+app.use(bodyParser.json());
+
+// Routes
+app.use('/api/employees', employeeRoutes);
+
+app.listen(PORT, () => {
+  console.log(\`Backend server running on http://localhost:\${PORT}\`);
+});`,
+          reason: 'Create main backend server file with employee routes'
+        },
+        !aiResponse.operations.some(op => op.path === 'frontend/src/index.tsx') && {
+          op: 'create' as const,
+          path: 'frontend/src/index.tsx',
+          content: `import React from 'react'
+import ReactDOM from 'react-dom/client'
+import App from './App.tsx'
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+)`,
+          reason: 'Create React application entry point'
+        },
+        !aiResponse.operations.some(op => op.path === 'frontend/src/App.tsx') && {
+          op: 'create' as const,
+          path: 'frontend/src/App.tsx',
+          content: `import React from 'react';
+import EmployeeListPage from './employees/pages/EmployeeListPage.tsx';
+
+function App() {
+  return (
+    <div className="App">
+      <h1>${aiResponse.projectName}</h1>
+      <EmployeeListPage />
+    </div>
+  );
+}
+
+export default App;`,
+          reason: 'Create main App component with employee management'
+        }
+      ].filter(Boolean);
+
+      aiResponse.operations.push(...missingFiles);
+    }
 
     const allOperations = [...requiredOperations, ...aiResponse.operations];
     await applyOperations(projectDir, allOperations);
@@ -298,7 +416,7 @@ async function processProjectUpdate(
   brdContent: string,
   source: string,
   fileInfo?: any,
-  selectionMode: 'feature' | 'custom' = 'feature',
+  selectionMode: 'feature' | 'custom' | 'full' = 'full',
   selectedPaths: string[] = []
 ): Promise<any> {
   // Validate project exists
@@ -336,8 +454,20 @@ async function processProjectUpdate(
     snapshotType = 'custom-selection';
 
     console.log(`📁 Created custom snapshot with ${fileNamesSentToAI.length} files from ${selectedPaths.length} selected paths`);
+  } else if (selectionMode === 'full') {
+    // Full project mode - send entire project snapshot
+    console.log('📋 Processing full project snapshot...');
+
+    snapshot = await getFilesSnapshot(projectDir, projectId);
+    fileNamesSentToAI = Object.keys(snapshot);
+
+    updateContext = `Full project update (${fileNamesSentToAI.length} files)`;
+    operationType = 'update-full';
+    snapshotType = 'full-project';
+
+    console.log(`📁 Created full project snapshot with ${fileNamesSentToAI.length} files`);
   } else {
-    // Feature-based mode (default behavior)
+    // Legacy feature-based mode (fallback for backward compatibility)
     console.log('🔍 Phase 1A: Discovering features from project structure...');
     const discoveredFeatures = await discoverFeatures(projectDir, projectId);
     console.log(`✅ Discovered ${discoveredFeatures.features?.length || 0} features:`, discoveredFeatures.features?.map((f: any) => f.name) || []);

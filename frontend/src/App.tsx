@@ -45,7 +45,7 @@ function App() {
   const [viewingFileContent, setViewingFileContent] = useState<{filename: string, content: string} | null>(null);
 
   // Custom selection states
-  const [selectionMode, setSelectionMode] = useState<'feature' | 'custom'>('feature');
+  const [selectionMode, setSelectionMode] = useState<'full' | 'custom'>('full');
   const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
 
   // Current view state
@@ -226,12 +226,7 @@ function App() {
         };
 
         // Add parameters based on selection mode
-        if (selectionMode === 'feature') {
-          // Keep existing behavior if feature mode
-          if (selectedFeature) {
-            requestBody.feature = selectedFeature;
-          }
-        } else if (selectionMode === 'custom') {
+        if (selectionMode === 'custom') {
           if (selectedPaths.length > 0) {
             requestBody.selectedPaths = selectedPaths;
           } else {
@@ -257,7 +252,7 @@ function App() {
       setSelectedProject('');
       setSelectedFeature('');
       setSelectedPaths([]);
-      setSelectionMode('feature');
+      setSelectionMode('full');
       setUploadedFile(null);
     } catch (error: any) {
       console.error('Failed to update project:', error);
@@ -894,6 +889,9 @@ function App() {
         >
           📊 File Tracking
         </button>
+        <div style={{ fontSize: '0.75em', color: '#999', marginTop: '2px', textAlign: 'center' }}>
+          Also available at: <a href="http://localhost:3000/monitoring/ai" target="_blank" rel="noopener noreferrer" style={{ color: '#dc3545', textDecoration: 'underline' }}>http://localhost:3000/monitoring/ai</a>
+        </div>
       </div>
     </nav>
   );
@@ -927,15 +925,15 @@ function App() {
                   <input
                     type="radio"
                     name="selectionMode"
-                    value="feature"
-                    checked={selectionMode === 'feature'}
-                    onChange={(e) => setSelectionMode(e.target.value as 'feature' | 'custom')}
+                    value="full"
+                    checked={selectionMode === 'full'}
+                    onChange={(e) => setSelectionMode(e.target.value as 'full' | 'custom')}
                     style={{ marginRight: '8px' }}
                   />
                   <div>
-                    <strong>🤖 AI Feature Detection</strong>
+                    <strong>📂 All Files</strong>
                     <div style={{ fontSize: '0.85em', color: '#666', marginTop: '2px' }}>
-                      Let AI analyze your BRD and determine affected features automatically
+                      Send entire project snapshot to AI (excluding common files like node_modules)
                     </div>
                   </div>
                 </label>
@@ -945,7 +943,7 @@ function App() {
                     name="selectionMode"
                     value="custom"
                     checked={selectionMode === 'custom'}
-                    onChange={(e) => setSelectionMode(e.target.value as 'feature' | 'custom')}
+                    onChange={(e) => setSelectionMode(e.target.value as 'full' | 'custom')}
                     style={{ marginRight: '8px' }}
                   />
                   <div>
@@ -960,20 +958,20 @@ function App() {
               {/* Info Box */}
               <div style={{
                 padding: '10px',
-                backgroundColor: selectionMode === 'feature' ? '#e8f4fd' : '#f0f8ff',
-                border: selectionMode === 'feature' ? '1px solid #2196f3' : '1px solid #0066cc',
+                backgroundColor: selectionMode === 'full' ? '#e8f4fd' : '#f0f8ff',
+                border: selectionMode === 'full' ? '1px solid #2196f3' : '1px solid #0066cc',
                 borderRadius: '4px'
               }}>
                 <h4 style={{
                   margin: '0 0 6px 0',
-                  color: selectionMode === 'feature' ? '#1976d2' : '#0066cc',
+                  color: selectionMode === 'full' ? '#1976d2' : '#0066cc',
                   fontSize: '0.95em'
                 }}>
-                  {selectionMode === 'feature' ? '🤖 AI-Powered Update' : '🎯 Custom Selection Mode'}
+                  {selectionMode === 'full' ? '📂 Full Project Mode' : '🎯 Custom Selection Mode'}
                 </h4>
                 <p style={{ margin: 0, fontSize: '0.85em', color: '#666' }}>
-                  {selectionMode === 'feature'
-                    ? 'AI will analyze your BRD requirements and identify which features are affected. Only relevant files will be processed for optimal performance.'
+                  {selectionMode === 'full'
+                    ? 'Send entire project to AI (excluding node_modules, logs, build files, etc.). Most comprehensive but may use more tokens.'
                     : 'Select specific folders from the project. Only files within the selected folders will be included in the AI analysis snapshot.'
                   }
                 </p>
