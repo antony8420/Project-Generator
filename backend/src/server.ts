@@ -315,7 +315,7 @@ export default defineConfig({
     ];
 
     const hasRequiredFiles = requiredFiles.every(requiredFile =>
-      aiResponse.operations.some(op => op.path === requiredFile)
+      aiResponse.operations.some((op:any)  => op.path === requiredFile)
     );
 
     if (!hasRequiredFiles) {
@@ -323,7 +323,7 @@ export default defineConfig({
 
       // Add missing core files if AI didn't generate them
       const missingFiles = [
-        !aiResponse.operations.some(op => op.path === 'backend/src/index.ts') && {
+        !aiResponse.operations.some((op:any) => op.path === 'backend/src/index.ts') && {
           op: 'create' as const,
           path: 'backend/src/index.ts',
           content: `import express from 'express';
@@ -347,7 +347,7 @@ app.listen(PORT, () => {
 });`,
           reason: 'Create main backend server file with employee routes'
         },
-        !aiResponse.operations.some(op => op.path === 'frontend/src/index.tsx') && {
+        !aiResponse.operations.some( (op:any) => op.path === 'frontend/src/index.tsx') && {
           op: 'create' as const,
           path: 'frontend/src/index.tsx',
           content: `import React from 'react'
@@ -361,7 +361,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 )`,
           reason: 'Create React application entry point'
         },
-        !aiResponse.operations.some(op => op.path === 'frontend/src/App.tsx') && {
+        !aiResponse.operations.some( (op:any) => op.path === 'frontend/src/App.tsx') && {
           op: 'create' as const,
           path: 'frontend/src/App.tsx',
           content: `import React from 'react';

@@ -1,0 +1,19 @@
+[
+  {
+    "id": "r1",
+    "code": "RF1",
+    "description": "High BP Reflex",
+    "answer_range": ">140",
+    "time_range": "Most Recent",
+    "responses": [
+      {
+        "id": "rr1",
+        "type": "SendMail",
+        "dept_id": "ED",
+        "item_id": null,
+        "repeat_settings": "Once",
+        "prompt_user_flag": true
+      }
+    ]
+  }
+]

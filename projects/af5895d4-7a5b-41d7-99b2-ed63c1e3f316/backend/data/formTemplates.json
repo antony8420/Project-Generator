@@ -1,0 +1,15 @@
+[
+  {
+    "id": "ft1",
+    "code": "VIT",
+    "title": "Vitals Entry",
+    "version": 1,
+    "status": "Live",
+    "chartlink_tab": "Vitals",
+    "subcategory": "Clinical",
+    "permissions": ["Nurse", "Physician"],
+    "default_font": "Arial",
+    "created_by": "e1",
+    "created_on": "2024-06-01T10:00:00Z"
+  }
+]

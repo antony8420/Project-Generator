@@ -89,12 +89,21 @@ TECHNICAL REQUIREMENTS:
 - TypeScript for ALL files (backend + frontend)
 - Express.js backend with proper middleware
 - React frontend with functional components
+- Vite configuration file (vite.config.ts) with React plugin setup
+- Proper HTML entry point (index.html) with Vite script loading
+- Vite dev server running on port 3001
 - JSON file-based data storage (async operations)
 - Proper error handling and validation
 - Responsive UI design
 - API client with axios/fetch
 - Form validation (client and server)
 - Loading states and user feedback
+
+MANDATORY VITE PACKAGE.JSON FORMAT:
+MUST use: "type": "module"
+MUST have scripts: "dev": "vite", "build": "vite build", "preview": "vite preview"
+DEPENDENCIES: react, react-dom, axios
+DEV DEPENDENCIES: @types/react, @types/react-dom, @vitejs/plugin-react, typescript, vite
 
 CRITICAL: Generate COMPLETE, RUNNABLE applications with all necessary files - no omissions allowed.
 
@@ -161,7 +170,7 @@ BRD TO FEATURE MAPPING RULES:
 
 Example:
 BRD: "Add password reset functionality to authentication"
-Features: ["auth", "users", "dashboard"]
+Features: ["dashboard"]
 Result: ["auth"] - authentication feature handles password reset
 
 Rules:

@@ -1,0 +1,23 @@
+[
+  {
+    "id": "e1",
+    "name": "Alice Smith",
+    "role": "Nurse",
+    "department": "ED",
+    "email": "alice.smith@hospital.org"
+  },
+  {
+    "id": "e2",
+    "name": "Bob Jones",
+    "role": "Physician",
+    "department": "Inpatient",
+    "email": "bob.jones@hospital.org"
+  },
+  {
+    "name": "test",
+    "role": "ters",
+    "department": "dee",
+    "email": "aa@gmail.com",
+    "id": "a332bc9d-9855-4329-a72c-0c9c3250174f"
+  }
+]

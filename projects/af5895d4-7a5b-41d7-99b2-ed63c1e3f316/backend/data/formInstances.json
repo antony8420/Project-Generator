@@ -1,0 +1,13 @@
+[
+  {
+    "id": "fi1",
+    "template_id": "ft1",
+    "patient_id": "p1",
+    "encounter_id": "enc1",
+    "status": "Open",
+    "created_by": "e1",
+    "created_on": "2024-06-01T10:05:00Z",
+    "locked_by": null,
+    "locked_on": null
+  }
+]

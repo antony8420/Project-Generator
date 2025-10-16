@@ -1,0 +1,10 @@
+[
+  {
+    "id": "s1",
+    "form_instance_id": "fi1",
+    "signer_id": "e1",
+    "signature_blob": "base64string...",
+    "method": "Topaz",
+    "timestamp": "2024-06-01T10:07:00Z"
+  }
+]
